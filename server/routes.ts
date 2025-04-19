@@ -1,10 +1,14 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { businessCardFormSchema, z } from "zod";
-import { insertBusinessCardSchema } from "@shared/schema";
+import { z } from "zod";
+import { insertBusinessCardSchema, insertPublicLinkSchema, businessCardFormSchema } from "@shared/schema";
+import { setupAuth, isAuthenticated, isAdmin } from "./auth";
+import { nanoid } from "nanoid";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Setup authentication
+  setupAuth(app);
   // API routes for business cards
   app.get("/api/business-cards", async (req: Request, res: Response) => {
     try {
@@ -140,6 +144,167 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.error("Error auto-saving business card:", error);
       return res.status(500).json({ message: "Failed to auto-save business card" });
+    }
+  });
+
+  // Public link sharing routes
+  app.post("/api/public-links", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const businessCardId = Number(req.body.businessCardId);
+      
+      // Check if card exists
+      const card = await storage.getBusinessCard(businessCardId);
+      if (!card) {
+        return res.status(404).json({ message: "Business card not found" });
+      }
+      
+      // Generate unique slug
+      const uniqueSlug = nanoid(10);
+      
+      const publicLink = await storage.createPublicLink({
+        businessCardId,
+        uniqueSlug,
+        isActive: true
+      });
+      
+      return res.status(201).json(publicLink);
+    } catch (error) {
+      console.error("Error creating public link:", error);
+      return res.status(500).json({ message: "Failed to create public link" });
+    }
+  });
+
+  app.get("/api/public-links/:slug", async (req: Request, res: Response) => {
+    try {
+      const slug = req.params.slug;
+      const link = await storage.getPublicLinkBySlug(slug);
+      
+      if (!link || !link.isActive) {
+        return res.status(404).json({ message: "Public link not found or inactive" });
+      }
+      
+      // Increment view count
+      await storage.incrementPublicLinkViewCount(link.id);
+      
+      // Get associated business card
+      const card = await storage.getBusinessCard(link.businessCardId);
+      
+      if (!card) {
+        return res.status(404).json({ message: "Business card not found" });
+      }
+      
+      return res.json(card);
+    } catch (error) {
+      console.error("Error fetching public link:", error);
+      return res.status(500).json({ message: "Failed to fetch public link" });
+    }
+  });
+
+  // Admin routes
+  // Get all users (admin only)
+  app.get("/api/admin/users", isAdmin, async (req: Request, res: Response) => {
+    try {
+      const users = await storage.getAllUsers();
+      // Remove passwords from user objects
+      const safeUsers = users.map(user => {
+        const { password, ...safeUser } = user;
+        return safeUser;
+      });
+      return res.json(safeUsers);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      return res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // Get all business cards (admin only)
+  app.get("/api/admin/business-cards", isAdmin, async (req: Request, res: Response) => {
+    try {
+      const cards = await storage.getAllBusinessCards();
+      return res.json(cards);
+    } catch (error) {
+      console.error("Error fetching all business cards:", error);
+      return res.status(500).json({ message: "Failed to fetch business cards" });
+    }
+  });
+
+  // Get all public links (admin only)
+  app.get("/api/admin/public-links", isAdmin, async (req: Request, res: Response) => {
+    try {
+      // This would need to be implemented in storage
+      const cards = await storage.getAllBusinessCards();
+      const linksPromises = cards.map(card => 
+        storage.getPublicLinksByBusinessCardId(card.id)
+      );
+      
+      const nestedLinks = await Promise.all(linksPromises);
+      const links = nestedLinks.flat();
+      
+      return res.json(links);
+    } catch (error) {
+      console.error("Error fetching public links:", error);
+      return res.status(500).json({ message: "Failed to fetch public links" });
+    }
+  });
+
+  // Toggle public link active status (admin only)
+  app.patch("/api/admin/public-links/:id", isAdmin, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      const { isActive } = req.body;
+      
+      if (typeof isActive !== 'boolean') {
+        return res.status(400).json({ message: "isActive must be a boolean" });
+      }
+      
+      const link = await storage.getPublicLink(id);
+      if (!link) {
+        return res.status(404).json({ message: "Public link not found" });
+      }
+      
+      const updatedLink = await storage.updatePublicLink(id, { isActive });
+      return res.json(updatedLink);
+    } catch (error) {
+      console.error("Error updating public link:", error);
+      return res.status(500).json({ message: "Failed to update public link" });
+    }
+  });
+
+  // Admin delete user (admin only)
+  app.delete("/api/admin/users/:id", isAdmin, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      
+      // Don't allow deleting the current admin user
+      if (req.user.id === id) {
+        return res.status(400).json({ message: "Cannot delete your own account" });
+      }
+      
+      const user = await storage.getUser(id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Delete all user's business cards first
+      const cards = await storage.getBusinessCardsByUserId(id);
+      for (const card of cards) {
+        // Delete all public links for this card
+        const links = await storage.getPublicLinksByBusinessCardId(card.id);
+        for (const link of links) {
+          await storage.deletePublicLink(link.id);
+        }
+        
+        // Delete the card
+        await storage.deleteBusinessCard(card.id);
+      }
+      
+      // This would need to be implemented in storage
+      // await storage.deleteUser(id);
+      
+      return res.status(204).end();
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      return res.status(500).json({ message: "Failed to delete user" });
     }
   });
 

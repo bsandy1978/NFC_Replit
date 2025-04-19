@@ -1,20 +1,40 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Define role enum
+export const roleEnum = pgEnum('role', ['user', 'admin']);
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  email: text("email").notNull().unique(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  role: roleEnum("role").default("user").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const insertUserSchema = createInsertSchema(users)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    email: z.string().email("Invalid email address"),
+    confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
+
+export const loginSchema = z.object({
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(1, "Password is required"),
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
+export type InsertUser = Omit<z.infer<typeof insertUserSchema>, "confirmPassword">;
 export type User = typeof users.$inferSelect;
+export type LoginData = z.infer<typeof loginSchema>;
 
 // Define social media platform schema
 export const SocialMediaPlatformSchema = z.enum([
@@ -91,3 +111,19 @@ export const businessCardFormSchema = insertBusinessCardSchema.extend({
   website: z.string().url("Please enter a valid URL").optional().or(z.literal("")),
   bio: z.string().max(200, "Bio must be under 200 characters").optional(),
 });
+
+// Define public links for business cards
+export const publicLinks = pgTable("public_links", {
+  id: serial("id").primaryKey(),
+  businessCardId: integer("business_card_id").references(() => businessCards.id).notNull(),
+  uniqueSlug: text("unique_slug").notNull().unique(),
+  isActive: boolean("is_active").default(true).notNull(),
+  viewCount: integer("view_count").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPublicLinkSchema = createInsertSchema(publicLinks)
+  .omit({ id: true, viewCount: true, createdAt: true });
+
+export type InsertPublicLink = z.infer<typeof insertPublicLinkSchema>;
+export type PublicLink = typeof publicLinks.$inferSelect;

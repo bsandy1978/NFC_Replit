@@ -4,8 +4,14 @@ import {
   type InsertUser, 
   businessCards, 
   type BusinessCard, 
-  type InsertBusinessCard 
+  type InsertBusinessCard,
+  publicLinks,
+  type PublicLink,
+  type InsertPublicLink
 } from "@shared/schema";
+import * as session from "express-session";
+import connectPg from "connect-pg-simple";
+import { pool } from "./db";
 
 // Define interface for storage operations
 export interface IStorage {
@@ -13,99 +19,210 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  getAllUsers(): Promise<User[]>;
+  updateUser(id: number, userData: Partial<User>): Promise<User | undefined>;
   
   // Business card operations
   getBusinessCard(id: number): Promise<BusinessCard | undefined>;
   getBusinessCardsByUserId(userId: number): Promise<BusinessCard[]>;
   getBusinessCardByDeviceId(deviceId: string): Promise<BusinessCard | undefined>;
+  getAllBusinessCards(): Promise<BusinessCard[]>;
   createBusinessCard(card: InsertBusinessCard): Promise<BusinessCard>;
   updateBusinessCard(id: number, card: Partial<InsertBusinessCard>): Promise<BusinessCard | undefined>;
   deleteBusinessCard(id: number): Promise<boolean>;
+  
+  // Public link operations
+  getPublicLink(id: number): Promise<PublicLink | undefined>;
+  getPublicLinkBySlug(slug: string): Promise<PublicLink | undefined>;
+  getPublicLinksByBusinessCardId(businessCardId: number): Promise<PublicLink[]>;
+  createPublicLink(link: InsertPublicLink): Promise<PublicLink>;
+  updatePublicLink(id: number, linkData: Partial<InsertPublicLink>): Promise<PublicLink | undefined>;
+  incrementPublicLinkViewCount(id: number): Promise<void>;
+  deletePublicLink(id: number): Promise<boolean>;
+  
+  // Session store for authentication
+  sessionStore: session.Store;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private businessCards: Map<number, BusinessCard>;
-  private userIdCounter: number;
-  private businessCardIdCounter: number;
+export class DatabaseStorage implements IStorage {
+  sessionStore: session.Store;
 
   constructor() {
-    this.users = new Map();
-    this.businessCards = new Map();
-    this.userIdCounter = 1;
-    this.businessCardIdCounter = 1;
+    const PostgresSessionStore = connectPg(session);
+    this.sessionStore = new PostgresSessionStore({ 
+      pool, 
+      createTableIfMissing: true 
+    });
   }
 
   // User operations
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const { db } = await import("./db");
+    const [user] = await db.select().from(users).where(({ eq }) => eq(users.id, id));
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const { db } = await import("./db");
+    const [user] = await db.select().from(users).where(({ eq }) => eq(users.username, username));
+    return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    const { db } = await import("./db");
+    return db.select().from(users);
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.userIdCounter++;
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
+    const { db } = await import("./db");
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  async updateUser(id: number, userData: Partial<User>): Promise<User | undefined> {
+    const { db } = await import("./db");
+    const [updatedUser] = await db
+      .update(users)
+      .set(userData)
+      .where(({ eq }) => eq(users.id, id))
+      .returning();
+    return updatedUser;
   }
 
   // Business card operations
   async getBusinessCard(id: number): Promise<BusinessCard | undefined> {
-    return this.businessCards.get(id);
+    const { db } = await import("./db");
+    const [card] = await db
+      .select()
+      .from(businessCards)
+      .where(({ eq }) => eq(businessCards.id, id));
+    return card;
   }
 
   async getBusinessCardsByUserId(userId: number): Promise<BusinessCard[]> {
-    return Array.from(this.businessCards.values()).filter(
-      (card) => card.userId === userId
-    );
+    const { db } = await import("./db");
+    return db
+      .select()
+      .from(businessCards)
+      .where(({ eq }) => eq(businessCards.userId, userId));
   }
 
   async getBusinessCardByDeviceId(deviceId: string): Promise<BusinessCard | undefined> {
-    return Array.from(this.businessCards.values()).find(
-      (card) => card.deviceId === deviceId
-    );
+    const { db } = await import("./db");
+    const [card] = await db
+      .select()
+      .from(businessCards)
+      .where(({ eq }) => eq(businessCards.deviceId, deviceId))
+      .orderBy(({ desc }) => [desc(businessCards.updatedAt)]);
+    return card;
+  }
+
+  async getAllBusinessCards(): Promise<BusinessCard[]> {
+    const { db } = await import("./db");
+    return db
+      .select()
+      .from(businessCards)
+      .orderBy(({ desc }) => [desc(businessCards.updatedAt)]);
   }
 
   async createBusinessCard(insertCard: InsertBusinessCard): Promise<BusinessCard> {
-    const id = this.businessCardIdCounter++;
-    const now = new Date();
-    
-    const card: BusinessCard = {
-      ...insertCard,
-      id,
-      createdAt: now,
-      updatedAt: now
-    };
-    
-    this.businessCards.set(id, card);
+    const { db } = await import("./db");
+    const [card] = await db
+      .insert(businessCards)
+      .values(insertCard)
+      .returning();
     return card;
   }
 
   async updateBusinessCard(id: number, updateData: Partial<InsertBusinessCard>): Promise<BusinessCard | undefined> {
-    const existingCard = await this.getBusinessCard(id);
+    const { db } = await import("./db");
+    const now = new Date();
     
-    if (!existingCard) {
-      return undefined;
-    }
+    const [updatedCard] = await db
+      .update(businessCards)
+      .set({ ...updateData, updatedAt: now })
+      .where(({ eq }) => eq(businessCards.id, id))
+      .returning();
     
-    const updatedCard: BusinessCard = {
-      ...existingCard,
-      ...updateData,
-      updatedAt: new Date()
-    };
-    
-    this.businessCards.set(id, updatedCard);
     return updatedCard;
   }
 
   async deleteBusinessCard(id: number): Promise<boolean> {
-    return this.businessCards.delete(id);
+    const { db } = await import("./db");
+    const result = await db
+      .delete(businessCards)
+      .where(({ eq }) => eq(businessCards.id, id))
+      .returning({ id: businessCards.id });
+    
+    return result.length > 0;
+  }
+
+  // Public link operations
+  async getPublicLink(id: number): Promise<PublicLink | undefined> {
+    const { db } = await import("./db");
+    const [link] = await db
+      .select()
+      .from(publicLinks)
+      .where(({ eq }) => eq(publicLinks.id, id));
+    return link;
+  }
+
+  async getPublicLinkBySlug(slug: string): Promise<PublicLink | undefined> {
+    const { db } = await import("./db");
+    const [link] = await db
+      .select()
+      .from(publicLinks)
+      .where(({ eq }) => eq(publicLinks.uniqueSlug, slug));
+    return link;
+  }
+
+  async getPublicLinksByBusinessCardId(businessCardId: number): Promise<PublicLink[]> {
+    const { db } = await import("./db");
+    return db
+      .select()
+      .from(publicLinks)
+      .where(({ eq }) => eq(publicLinks.businessCardId, businessCardId));
+  }
+
+  async createPublicLink(link: InsertPublicLink): Promise<PublicLink> {
+    const { db } = await import("./db");
+    const [newLink] = await db
+      .insert(publicLinks)
+      .values(link)
+      .returning();
+    return newLink;
+  }
+
+  async updatePublicLink(id: number, linkData: Partial<InsertPublicLink>): Promise<PublicLink | undefined> {
+    const { db } = await import("./db");
+    const [updatedLink] = await db
+      .update(publicLinks)
+      .set(linkData)
+      .where(({ eq }) => eq(publicLinks.id, id))
+      .returning();
+    return updatedLink;
+  }
+
+  async incrementPublicLinkViewCount(id: number): Promise<void> {
+    const { db } = await import("./db");
+    await db
+      .update(publicLinks)
+      .set({ 
+        viewCount: 
+          ({ viewCount }) => `${viewCount} + 1` 
+      })
+      .where(({ eq }) => eq(publicLinks.id, id));
+  }
+
+  async deletePublicLink(id: number): Promise<boolean> {
+    const { db } = await import("./db");
+    const result = await db
+      .delete(publicLinks)
+      .where(({ eq }) => eq(publicLinks.id, id))
+      .returning({ id: publicLinks.id });
+    
+    return result.length > 0;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
