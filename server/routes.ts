@@ -158,8 +158,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Business card not found" });
       }
       
-      // Generate unique slug
-      const uniqueSlug = nanoid(10);
+      // Use custom slug if provided, otherwise generate one
+      const uniqueSlug = req.body.uniqueSlug || nanoid(10);
+      
+      // Check if slug is already in use
+      if (req.body.uniqueSlug) {
+        const existingLink = await storage.getPublicLinkBySlug(uniqueSlug);
+        if (existingLink) {
+          return res.status(400).json({ message: "This slug is already in use. Please choose another one." });
+        }
+      }
       
       const publicLink = await storage.createPublicLink({
         businessCardId,
@@ -174,6 +182,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get public links by card ID
+  app.get("/api/public-links/by-card/:cardId", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const cardId = Number(req.params.cardId);
+      
+      // Check if card exists
+      const card = await storage.getBusinessCard(cardId);
+      if (!card) {
+        return res.status(404).json({ message: "Business card not found" });
+      }
+      
+      // Get all public links for this card
+      const links = await storage.getPublicLinksByBusinessCardId(cardId);
+      return res.json(links);
+    } catch (error) {
+      console.error("Error fetching public links for card:", error);
+      return res.status(500).json({ message: "Failed to fetch public links" });
+    }
+  });
+  
+  // Delete a public link
+  app.delete("/api/public-links/:id", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params.id);
+      
+      // Check if link exists
+      const link = await storage.getPublicLink(id);
+      if (!link) {
+        return res.status(404).json({ message: "Public link not found" });
+      }
+      
+      // Delete the link
+      await storage.deletePublicLink(id);
+      return res.status(204).end();
+    } catch (error) {
+      console.error("Error deleting public link:", error);
+      return res.status(500).json({ message: "Failed to delete public link" });
+    }
+  });
+  
+  // Get business card by public link slug - for public view
   app.get("/api/public-links/:slug", async (req: Request, res: Response) => {
     try {
       const slug = req.params.slug;

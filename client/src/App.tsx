@@ -6,6 +6,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import Editor from "@/pages/editor";
 import AuthPage from "@/pages/auth-page";
+import PublicCardPage from "@/pages/public-card";
 import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
 import { AuthProvider } from "@/hooks/use-auth";
@@ -27,6 +28,9 @@ function Router() {
         <Switch>
           {/* Public routes */}
           <Route path="/auth" component={AuthPage} />
+          <Route path="/card/:slug">
+            {(params) => <PublicCardPage />}
+          </Route>
           
           {/* Protected routes */}
           <ProtectedRoute path="/" component={Home} />

@@ -84,6 +84,7 @@ export const businessCards = pgTable("business_cards", {
   phone: text("phone"),
   website: text("website"),
   bio: text("bio"),
+  location: text("location"),
   profileImage: text("profile_image"),
   socialMedia: jsonb("social_media").$type<SocialMedia[]>(),
   template: text("template").notNull().default("Classic"),
