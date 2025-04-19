@@ -71,10 +71,10 @@ export default function AdminDashboard() {
                 <div className="text-2xl font-bold">{users?.length || 0}</div>
               </div>
               <Link href="/admin/users">
-                <a className="text-primary hover:text-primary-600 flex items-center">
+                <div className="text-primary hover:text-primary-600 flex items-center cursor-pointer">
                   <span className="text-sm">View</span>
                   <ArrowUpRight className="h-4 w-4 ml-1" />
-                </a>
+                </div>
               </Link>
             </div>
           </CardContent>
@@ -94,10 +94,10 @@ export default function AdminDashboard() {
                 <div className="text-2xl font-bold">{cards?.length || 0}</div>
               </div>
               <Link href="/admin/cards">
-                <a className="text-primary hover:text-primary-600 flex items-center">
+                <div className="text-primary hover:text-primary-600 flex items-center cursor-pointer">
                   <span className="text-sm">View</span>
                   <ArrowUpRight className="h-4 w-4 ml-1" />
-                </a>
+                </div>
               </Link>
             </div>
           </CardContent>
@@ -117,10 +117,10 @@ export default function AdminDashboard() {
                 <div className="text-2xl font-bold">{activeLinks?.length || 0}</div>
               </div>
               <Link href="/admin/links">
-                <a className="text-primary hover:text-primary-600 flex items-center">
+                <div className="text-primary hover:text-primary-600 flex items-center cursor-pointer">
                   <span className="text-sm">View</span>
                   <ArrowUpRight className="h-4 w-4 ml-1" />
-                </a>
+                </div>
               </Link>
             </div>
           </CardContent>
@@ -140,10 +140,10 @@ export default function AdminDashboard() {
                 <div className="text-2xl font-bold">{totalViews}</div>
               </div>
               <Link href="/admin/links">
-                <a className="text-primary hover:text-primary-600 flex items-center">
+                <div className="text-primary hover:text-primary-600 flex items-center cursor-pointer">
                   <span className="text-sm">Details</span>
                   <ArrowUpRight className="h-4 w-4 ml-1" />
-                </a>
+                </div>
               </Link>
             </div>
           </CardContent>
