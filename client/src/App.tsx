@@ -13,12 +13,14 @@ import { AuthProvider } from "@/hooks/use-auth";
 import { ProtectedRoute } from "@/lib/protected-route";
 
 import { lazy, Suspense } from "react";
+import ClaimNfcCard from "@/pages/claim-nfc-card";
 
 // Dynamic imports for admin pages
 const AdminDashboard = lazy(() => import("./pages/admin/dashboard"));
 const AdminUsers = lazy(() => import("./pages/admin/users"));
 const AdminCards = lazy(() => import("./pages/admin/cards"));
 const AdminLinks = lazy(() => import("./pages/admin/links"));
+const AdminNfcLinks = lazy(() => import("./pages/admin/generate-nfc-links"));
 
 function Router() {
   return (

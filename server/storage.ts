@@ -41,6 +41,14 @@ export interface IStorage {
   incrementPublicLinkViewCount(id: number): Promise<void>;
   deletePublicLink(id: number): Promise<boolean>;
   
+  // Pre-generated NFC links operations
+  getUnassignedLinks(): Promise<PublicLink[]>;
+  claimPublicLink(slug: string, userId: number, businessCardId: number): Promise<PublicLink | undefined>;
+  
+  // Template cards operations
+  getTemplateCards(): Promise<BusinessCard[]>;
+  createTemplateCard(card: InsertBusinessCard): Promise<BusinessCard>;
+  
   // Session store for authentication
   sessionStore: session.Store;
 }
@@ -238,6 +246,64 @@ export class DatabaseStorage implements IStorage {
       .returning({ id: publicLinks.id });
     
     return result.length > 0;
+  }
+  
+  // Pre-generated NFC links operations
+  async getUnassignedLinks(): Promise<PublicLink[]> {
+    const { db } = await import("./db");
+    const { eq, and, isNull } = await import("drizzle-orm");
+    return db
+      .select()
+      .from(publicLinks)
+      .where(
+        and(
+          eq(publicLinks.isPreGenerated, true),
+          eq(publicLinks.isClaimed, false),
+          eq(publicLinks.isActive, true)
+        )
+      );
+  }
+  
+  async claimPublicLink(slug: string, userId: number, businessCardId: number): Promise<PublicLink | undefined> {
+    const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
+    
+    // Get the link first
+    const link = await this.getPublicLinkBySlug(slug);
+    if (!link || !link.isPreGenerated || link.isClaimed) {
+      return undefined;
+    }
+    
+    // Update the link to mark it as claimed
+    const [updatedLink] = await db
+      .update(publicLinks)
+      .set({
+        isClaimed: true,
+        claimedAt: new Date(),
+        claimedByUserId: userId,
+        businessCardId
+      })
+      .where(eq(publicLinks.id, link.id))
+      .returning();
+      
+    return updatedLink;
+  }
+  
+  // Template cards operations
+  async getTemplateCards(): Promise<BusinessCard[]> {
+    const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
+    return db
+      .select()
+      .from(businessCards)
+      .where(eq(businessCards.isTemplate, true));
+  }
+  
+  async createTemplateCard(card: InsertBusinessCard): Promise<BusinessCard> {
+    return this.createBusinessCard({
+      ...card,
+      isTemplate: true
+    });
   }
 }
 

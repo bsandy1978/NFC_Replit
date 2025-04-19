@@ -95,6 +95,9 @@ export const businessCards = pgTable("business_cards", {
   template: text("template").notNull().default("Classic"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  isTemplate: boolean("is_template").default(false),
+  templateName: text("template_name"),
+  templateDescription: text("template_description"),
 });
 
 export const insertBusinessCardSchema = createInsertSchema(businessCards)
@@ -126,10 +129,21 @@ export const publicLinks = pgTable("public_links", {
   isActive: boolean("is_active").default(true).notNull(),
   viewCount: integer("view_count").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  isPreGenerated: boolean("is_pre_generated").default(false),
+  templateId: integer("template_id").references(() => businessCards.id),
+  isClaimed: boolean("is_claimed").default(false),
+  claimedAt: timestamp("claimed_at"),
+  claimedByUserId: integer("claimed_by_user_id").references(() => users.id),
 });
 
 export const insertPublicLinkSchema = createInsertSchema(publicLinks)
-  .omit({ id: true, viewCount: true, createdAt: true });
+  .omit({ id: true, viewCount: true, createdAt: true, claimedAt: true })
+  .extend({
+    templateId: z.number().optional().nullable(),
+    isPreGenerated: z.boolean().optional(),
+    isClaimed: z.boolean().optional(),
+    claimedByUserId: z.number().optional().nullable()
+  });
 
 export type InsertPublicLink = z.infer<typeof insertPublicLinkSchema>;
 export type PublicLink = typeof publicLinks.$inferSelect;

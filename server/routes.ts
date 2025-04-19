@@ -181,6 +181,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ message: "Failed to create public link" });
     }
   });
+  
+  // Admin route to generate pre-defined NFC links
+  app.post("/api/admin/generate-links", isAdmin, async (req: Request, res: Response) => {
+    try {
+      const count = Number(req.body.count) || 10;
+      const prefix = req.body.prefix || "";
+      const templateId = req.body.templateId;
+      
+      if (count < 1 || count > 1000) {
+        return res.status(400).json({ message: "Count must be between 1 and 1000" });
+      }
+      
+      // If template ID is provided, check if it exists
+      if (templateId) {
+        const templateCard = await storage.getBusinessCard(templateId);
+        if (!templateCard) {
+          return res.status(404).json({ message: "Template card not found" });
+        }
+      }
+      
+      const slugs: string[] = [];
+      const links: any[] = [];
+      
+      // Generate links
+      for (let i = 0; i < count; i++) {
+        // Generate a unique slug with optional prefix
+        let uniqueSlug = prefix ? `${prefix}-${nanoid(8)}` : nanoid(10);
+        
+        // Ensure slug is unique
+        let isUnique = false;
+        let attempts = 0;
+        
+        while (!isUnique && attempts < 5) {
+          const existingLink = await storage.getPublicLinkBySlug(uniqueSlug);
+          if (!existingLink) {
+            isUnique = true;
+          } else {
+            // If not unique, generate a new one
+            uniqueSlug = prefix ? `${prefix}-${nanoid(8)}` : nanoid(10);
+            attempts++;
+          }
+        }
+        
+        if (!isUnique) {
+          return res.status(500).json({ message: "Failed to generate unique slugs after multiple attempts" });
+        }
+        
+        // Store the slug for response
+        slugs.push(uniqueSlug);
+        
+        // Create the public link without associating it with a card yet (set businessCardId to null)
+        // This marks it as an unclaimed pre-generated link
+        const link = await storage.createPublicLink({
+          businessCardId: 0, // Special value to indicate unclaimed
+          uniqueSlug,
+          isActive: true,
+          isPreGenerated: true,
+          templateId: templateId || null
+        });
+        
+        links.push(link);
+      }
+      
+      return res.status(201).json({ slugs, links });
+    } catch (error) {
+      console.error("Error generating NFC links:", error);
+      return res.status(500).json({ message: "Failed to generate NFC links" });
+    }
+  });
+  
+  // Get all unassigned/unclaimed pre-generated links
+  app.get("/api/admin/unassigned-links", isAdmin, async (req: Request, res: Response) => {
+    try {
+      const links = await storage.getUnassignedLinks();
+      return res.json(links);
+    } catch (error) {
+      console.error("Error fetching unassigned links:", error);
+      return res.status(500).json({ message: "Failed to fetch unassigned links" });
+    }
+  });
+  
+  // Get template cards for pre-generated links
+  app.get("/api/admin/template-cards", isAdmin, async (req: Request, res: Response) => {
+    try {
+      // Get template cards (where isTemplate = true)
+      const templateCards = await storage.getTemplateCards();
+      return res.json(templateCards);
+    } catch (error) {
+      console.error("Error fetching template cards:", error);
+      return res.status(500).json({ message: "Failed to fetch template cards" });
+    }
+  });
 
   // Get public links by card ID
   app.get("/api/public-links/by-card/:cardId", isAuthenticated, async (req: Request, res: Response) => {
@@ -246,6 +338,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching public link:", error);
       return res.status(500).json({ message: "Failed to fetch public link" });
+    }
+  });
+  
+  // NFC Card Routes
+  // Get NFC link information - used in the claim page
+  app.get("/api/nfc-links/:slug", async (req: Request, res: Response) => {
+    try {
+      const slug = req.params.slug;
+      const link = await storage.getPublicLinkBySlug(slug);
+      
+      if (!link || !link.isActive) {
+        return res.status(404).json({ message: "NFC link not found or inactive" });
+      }
+      
+      // Get template card if applicable
+      let templateCard = null;
+      if (link.templateId) {
+        templateCard = await storage.getBusinessCard(link.templateId);
+      }
+      
+      return res.json({
+        id: link.id,
+        uniqueSlug: link.uniqueSlug,
+        isActive: link.isActive,
+        isPreGenerated: link.isPreGenerated,
+        isClaimed: link.isClaimed,
+        claimedAt: link.claimedAt,
+        templateId: link.templateId,
+        templateCard
+      });
+    } catch (error) {
+      console.error("Error fetching NFC link info:", error);
+      return res.status(500).json({ message: "Failed to fetch NFC link information" });
+    }
+  });
+  
+  // Claim an NFC link
+  app.post("/api/nfc-links/:slug/claim", isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const slug = req.params.slug;
+      const userId = req.user.id;
+      
+      // Get the link
+      const link = await storage.getPublicLinkBySlug(slug);
+      
+      if (!link) {
+        return res.status(404).json({ message: "NFC link not found" });
+      }
+      
+      if (!link.isActive) {
+        return res.status(400).json({ message: "This NFC link is not active" });
+      }
+      
+      if (link.isClaimed) {
+        return res.status(400).json({ message: "This NFC link has already been claimed" });
+      }
+      
+      // Get template card if provided
+      let templateData: any = {
+        userId,
+        deviceId: nanoid(), // Generate a new device ID for the card
+        firstName: "",
+        lastName: "",
+        jobTitle: "",
+        company: "",
+        email: "",
+        template: "Classic"
+      };
+      
+      if (link.templateId) {
+        const templateCard = await storage.getBusinessCard(link.templateId);
+        if (templateCard) {
+          // Copy fields from the template
+          const { 
+            id, userId: templateUserId, deviceId: templateDeviceId, 
+            createdAt, updatedAt, isTemplate, templateName, templateDescription,
+            ...templateFields 
+          } = templateCard;
+          
+          templateData = {
+            ...templateFields,
+            userId,
+            deviceId: nanoid()
+          };
+        }
+      }
+      
+      // Create a new business card for the user
+      const newCard = await storage.createBusinessCard(templateData);
+      
+      // Claim the link with the new card
+      const claimedLink = await storage.claimPublicLink(slug, userId, newCard.id);
+      
+      if (!claimedLink) {
+        return res.status(500).json({ message: "Failed to claim the NFC link" });
+      }
+      
+      return res.status(201).json({
+        message: "NFC card claimed successfully",
+        businessCardId: newCard.id,
+        link: claimedLink
+      });
+    } catch (error) {
+      console.error("Error claiming NFC link:", error);
+      return res.status(500).json({ message: "Failed to claim NFC link" });
     }
   });
 
