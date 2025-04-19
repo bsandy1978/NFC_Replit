@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import CardForm from "@/components/card-form";
 import CardPreview from "@/components/card-preview";
 import CardTemplate from "@/components/card-template";
+import PublicLinkGenerator from "@/components/public-link-generator";
+import { useToast } from "@/hooks/use-toast";
 import { BusinessCard } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { getDeviceId } from "@/lib/device-id";
@@ -143,8 +145,23 @@ const Editor = () => {
               <TabsContent value="share" className="m-0">
                 <div className="p-5 space-y-6">
                   <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider mb-4">Share Your Card</h3>
-                  <p className="text-sm text-slate-500">Generate a shareable link or QR code for your business card.</p>
-                  {/* Sharing options would go here in a real implementation */}
+                  <p className="text-sm text-slate-500 mb-6">Generate a shareable link for your business card that others can view without logging in.</p>
+                  
+                  {fetchedCard && fetchedCard.id ? (
+                    <PublicLinkGenerator businessCardId={fetchedCard.id} />
+                  ) : (
+                    <div className="text-center p-6 border border-dashed rounded-md border-slate-300 bg-slate-50">
+                      <p className="text-slate-600">Save your card first to generate public links</p>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-3"
+                        disabled={!autoSaveEnabled}
+                      >
+                        {autoSaveEnabled ? "Saving automatically..." : "Enable auto-save first"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </TabsContent>
             </Tabs>
