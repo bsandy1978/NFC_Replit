@@ -51,17 +51,27 @@ export default function GenerateNfcLinks() {
     mutationFn: async (data: { count: number, prefix: string, templateId?: number }) => {
       const res = await apiRequest("POST", "/api/admin/generate-links", data);
       if (!res.ok) {
-        throw new Error('Failed to generate links');
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to generate links');
       }
       return res.json();
     },
     onSuccess: (data) => {
-      setGeneratedLinks(data.slugs);
-      toast({
-        title: "Links Generated",
-        description: `Successfully generated ${data.slugs.length} new NFC card links.`,
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/unassigned-links'] });
+      if (data && data.slugs && Array.isArray(data.slugs)) {
+        setGeneratedLinks(data.slugs);
+        toast({
+          title: "Links Generated",
+          description: `Successfully generated ${data.slugs.length} new NFC card links.`,
+        });
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/unassigned-links'] });
+      } else {
+        toast({
+          title: "Warning",
+          description: "Unexpected response format from server",
+          variant: "destructive",
+        });
+      }
+      setIsGenerating(false);
     },
     onError: (error: Error) => {
       toast({
@@ -69,13 +79,16 @@ export default function GenerateNfcLinks() {
         description: error.message,
         variant: "destructive",
       });
+      setIsGenerating(false);
     }
   });
 
   // Function to generate new links
   const handleGenerateLinks = () => {
     setIsGenerating(true);
-    const templateId = selectedTemplateId ? parseInt(selectedTemplateId) : undefined;
+    const templateId = selectedTemplateId && selectedTemplateId !== 'none' && 
+                       selectedTemplateId !== 'no-templates' ? 
+                       parseInt(selectedTemplateId) : undefined;
     
     generateLinksMutation.mutate({
       count: numLinks,
@@ -164,12 +177,16 @@ export default function GenerateNfcLinks() {
                     <SelectValue placeholder="Select a template (optional)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No template</SelectItem>
-                    {templateCards.map((template: any) => (
-                      <SelectItem key={template.id} value={template.id.toString()}>
-                        {template.name || `Template ${template.id}`}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="none">No template</SelectItem>
+                    {templateCards && templateCards.length > 0 ? (
+                      templateCards.map((template: any) => (
+                        <SelectItem key={template.id} value={template.id.toString()}>
+                          {template.templateName || `Template ${template.id}`}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="no-templates">No templates available</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">

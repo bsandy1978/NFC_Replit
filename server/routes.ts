@@ -231,20 +231,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Store the slug for response
         slugs.push(uniqueSlug);
         
-        // Create the public link without associating it with a card yet (set businessCardId to null)
-        // This marks it as an unclaimed pre-generated link
-        const link = await storage.createPublicLink({
-          businessCardId: 0, // Special value to indicate unclaimed
-          uniqueSlug,
-          isActive: true,
-          isPreGenerated: true,
-          templateId: templateId || null
-        });
-        
-        links.push(link);
+        try {
+          // Create the public link without associating it with a card yet
+          // This marks it as an unclaimed pre-generated link
+          const link = await storage.createPublicLink({
+            businessCardId: 0, // Special value to indicate unclaimed
+            uniqueSlug,
+            isActive: true,
+            isPreGenerated: true,
+            templateId: templateId || null
+          });
+          
+          links.push(link);
+        } catch (err) {
+          console.error("Error creating public link:", err);
+          // Continue with next iteration if one link fails
+        }
       }
       
-      return res.status(201).json({ slugs, links });
+      return res.status(201).json({ slugs, links: slugs }); // Return only the slugs for simplicity
     } catch (error) {
       console.error("Error generating NFC links:", error);
       return res.status(500).json({ message: "Failed to generate NFC links" });
