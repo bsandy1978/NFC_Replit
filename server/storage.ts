@@ -9,8 +9,9 @@ import {
   type PublicLink,
   type InsertPublicLink
 } from "@shared/schema";
-import * as session from "express-session";
-import connectPg from "connect-pg-simple";
+import session from "express-session";
+// @ts-ignore
+import connectPgSimple from "connect-pg-simple";
 import { pool } from "./db";
 
 // Define interface for storage operations
@@ -48,7 +49,7 @@ export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    const PostgresSessionStore = connectPg(session);
+    const PostgresSessionStore = connectPgSimple(session);
     this.sessionStore = new PostgresSessionStore({ 
       pool, 
       createTableIfMissing: true 
@@ -58,13 +59,15 @@ export class DatabaseStorage implements IStorage {
   // User operations
   async getUser(id: number): Promise<User | undefined> {
     const { db } = await import("./db");
-    const [user] = await db.select().from(users).where(({ eq }) => eq(users.id, id));
+    const { eq } = await import("drizzle-orm");
+    const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
     const { db } = await import("./db");
-    const [user] = await db.select().from(users).where(({ eq }) => eq(users.username, username));
+    const { eq } = await import("drizzle-orm");
+    const [user] = await db.select().from(users).where(eq(users.username, username));
     return user;
   }
 
@@ -81,10 +84,11 @@ export class DatabaseStorage implements IStorage {
 
   async updateUser(id: number, userData: Partial<User>): Promise<User | undefined> {
     const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
     const [updatedUser] = await db
       .update(users)
       .set(userData)
-      .where(({ eq }) => eq(users.id, id))
+      .where(eq(users.id, id))
       .returning();
     return updatedUser;
   }
@@ -92,37 +96,42 @@ export class DatabaseStorage implements IStorage {
   // Business card operations
   async getBusinessCard(id: number): Promise<BusinessCard | undefined> {
     const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
     const [card] = await db
       .select()
       .from(businessCards)
-      .where(({ eq }) => eq(businessCards.id, id));
+      .where(eq(businessCards.id, id));
     return card;
   }
 
   async getBusinessCardsByUserId(userId: number): Promise<BusinessCard[]> {
     const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
     return db
       .select()
       .from(businessCards)
-      .where(({ eq }) => eq(businessCards.userId, userId));
+      .where(eq(businessCards.userId, userId));
   }
 
   async getBusinessCardByDeviceId(deviceId: string): Promise<BusinessCard | undefined> {
     const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
+    const { desc } = await import("drizzle-orm");
     const [card] = await db
       .select()
       .from(businessCards)
-      .where(({ eq }) => eq(businessCards.deviceId, deviceId))
-      .orderBy(({ desc }) => [desc(businessCards.updatedAt)]);
+      .where(eq(businessCards.deviceId, deviceId))
+      .orderBy(desc(businessCards.updatedAt));
     return card;
   }
 
   async getAllBusinessCards(): Promise<BusinessCard[]> {
     const { db } = await import("./db");
+    const { desc } = await import("drizzle-orm");
     return db
       .select()
       .from(businessCards)
-      .orderBy(({ desc }) => [desc(businessCards.updatedAt)]);
+      .orderBy(desc(businessCards.updatedAt));
   }
 
   async createBusinessCard(insertCard: InsertBusinessCard): Promise<BusinessCard> {
@@ -136,12 +145,13 @@ export class DatabaseStorage implements IStorage {
 
   async updateBusinessCard(id: number, updateData: Partial<InsertBusinessCard>): Promise<BusinessCard | undefined> {
     const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
     const now = new Date();
     
     const [updatedCard] = await db
       .update(businessCards)
       .set({ ...updateData, updatedAt: now })
-      .where(({ eq }) => eq(businessCards.id, id))
+      .where(eq(businessCards.id, id))
       .returning();
     
     return updatedCard;
@@ -149,9 +159,10 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBusinessCard(id: number): Promise<boolean> {
     const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
     const result = await db
       .delete(businessCards)
-      .where(({ eq }) => eq(businessCards.id, id))
+      .where(eq(businessCards.id, id))
       .returning({ id: businessCards.id });
     
     return result.length > 0;
@@ -160,28 +171,31 @@ export class DatabaseStorage implements IStorage {
   // Public link operations
   async getPublicLink(id: number): Promise<PublicLink | undefined> {
     const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
     const [link] = await db
       .select()
       .from(publicLinks)
-      .where(({ eq }) => eq(publicLinks.id, id));
+      .where(eq(publicLinks.id, id));
     return link;
   }
 
   async getPublicLinkBySlug(slug: string): Promise<PublicLink | undefined> {
     const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
     const [link] = await db
       .select()
       .from(publicLinks)
-      .where(({ eq }) => eq(publicLinks.uniqueSlug, slug));
+      .where(eq(publicLinks.uniqueSlug, slug));
     return link;
   }
 
   async getPublicLinksByBusinessCardId(businessCardId: number): Promise<PublicLink[]> {
     const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
     return db
       .select()
       .from(publicLinks)
-      .where(({ eq }) => eq(publicLinks.businessCardId, businessCardId));
+      .where(eq(publicLinks.businessCardId, businessCardId));
   }
 
   async createPublicLink(link: InsertPublicLink): Promise<PublicLink> {
@@ -195,30 +209,32 @@ export class DatabaseStorage implements IStorage {
 
   async updatePublicLink(id: number, linkData: Partial<InsertPublicLink>): Promise<PublicLink | undefined> {
     const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
     const [updatedLink] = await db
       .update(publicLinks)
       .set(linkData)
-      .where(({ eq }) => eq(publicLinks.id, id))
+      .where(eq(publicLinks.id, id))
       .returning();
     return updatedLink;
   }
 
   async incrementPublicLinkViewCount(id: number): Promise<void> {
     const { db } = await import("./db");
+    const { eq, sql } = await import("drizzle-orm");
     await db
       .update(publicLinks)
       .set({ 
-        viewCount: 
-          ({ viewCount }) => `${viewCount} + 1` 
+        viewCount: sql`${publicLinks.viewCount} + 1`
       })
-      .where(({ eq }) => eq(publicLinks.id, id));
+      .where(eq(publicLinks.id, id));
   }
 
   async deletePublicLink(id: number): Promise<boolean> {
     const { db } = await import("./db");
+    const { eq } = await import("drizzle-orm");
     const result = await db
       .delete(publicLinks)
-      .where(({ eq }) => eq(publicLinks.id, id))
+      .where(eq(publicLinks.id, id))
       .returning({ id: publicLinks.id });
     
     return result.length > 0;
